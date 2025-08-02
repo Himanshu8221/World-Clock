@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Class Live Clock</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .7; }
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-5xl mx-auto space-y-12">
+        
+        <header class="text-center">
+            <h1 class="text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 animate-pulse-slow">
+                World Time 
+            </h1>
+            <p class="mt-4 text-xl md:text-2xl text-gray-400">Live, Accurate, and Beautiful. ✨</p>
+        </header>
+
+        <div class="bg-gray-900 p-8 md:p-12 rounded-3xl shadow-2xl border border-gray-800 transition-transform duration-300 hover:scale-[1.01]">
+            <h2 class="text-2xl md:text-3xl font-bold text-center text-emerald-400 mb-4">India (IST) 🇮🇳</h2>
+            <div id="india-time" class="text-6xl md:text-8xl lg:text-9xl font-light text-center tracking-tight text-white transition-opacity duration-500 ease-in-out">
+                </div>
+            <div id="india-date" class="text-lg md:text-xl text-center text-gray-400 mt-2">
+                </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="text-center">
+                <h2 class="text-3xl font-bold text-cyan-400">All Timezones</h2>
+                <p class="text-gray-400 mt-2">Search for a city or country to see its local time.</p>
+            </div>
+            <input type="text" id="search-input" placeholder="Search for a city or timezone..." class="w-full p-4 rounded-full bg-gray-800 border border-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            
+            <div id="loading-indicator" class="text-center text-gray-400 mt-4">
+                Loading all timezones...
+            </div>
+
+            <div id="all-clocks-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+        </div>
+
+    </div>
+
+    <template id="clock-card-template">
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700 transition-transform duration-300 hover:scale-105 hover:shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-1" data-id="city-name"></h3>
+            <p class="text-sm text-gray-400 mb-2" data-id="timezone-name"></p>
+            <div class="text-3xl font-semibold text-cyan-400" data-id="current-time"></div>
+            <div class="text-sm font-medium text-gray-400 mt-1" data-id="time-diff"></div>
+        </div>
+    </template>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const indiaTimezone = 'Asia/Kolkata';
+            const allClocksContainer = document.getElementById('all-clocks-container');
+            const searchInput = document.getElementById('search-input');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const clockTemplate = document.getElementById('clock-card-template');
+
+            // List of all available timezones
+            const allTimezones = Intl.supportedValuesOf('timeZone');
+            let displayedTimezones = []; // Will hold the filtered timezones
+            
+            // Map to store pre-parsed timezone display names for faster rendering
+            const timezoneDisplayNames = new Map();
+
+            /**
+             * Extracts a more user-friendly city/country name from a timezone string.
+             * e.g., "America/New_York" -> "United States (New York)"
+             * "Europe/London" -> "United Kingdom (London)"
+             * "Asia/Kolkata" -> "India (Kolkata)"
+             * @param {string} timezone The IANA timezone string.
+             * @returns {string} A user-friendly name.
+             */
+            function getFriendlyTimezoneName(timezone) {
+                if (timezoneDisplayNames.has(timezone)) {
+                    return timezoneDisplayNames.get(timezone);
+                }
+
+                try {
+                    const parts = timezone.split('/');
+                    let countryOrRegion = '';
+                    let cityOrArea = '';
+
+                    if (parts.length === 1) {
+                        // For generic timezones like "UTC" or "GMT"
+                        countryOrRegion = parts[0].replace(/_/g, ' ');
+                    } else if (parts.length === 2) {
+                        // For "Region/City" like "America/New_York"
+                        countryOrRegion = parts[0].replace(/_/g, ' ');
+                        cityOrArea = parts[1].replace(/_/g, ' ');
+                    } else if (parts.length >= 3) {
+                        // For "Continent/Country/City" like "America/Argentina/Buenos_Aires"
+                        countryOrRegion = parts[1].replace(/_/g, ' '); // Often the country
+                        cityOrArea = parts.slice(2).join(' ').replace(/_/g, ' ');
+                    }
+
+                    // Attempt to get a more proper country name if available
+                    let formattedName = new Intl.DateTimeFormat('en-US', {
+                        timeZone: timezone,
+                        timeZoneName: 'longGeneric'
+                    }).format(new Date());
+
+                    // Fallback to simple parsing if generic name is too long or not ideal
+                    if (formattedName && formattedName.length < 30 && !formattedName.includes('GMT')) {
+                        // Extract just the descriptive part, e.g., "Pacific Time"
+                        formattedName = formattedName.replace(/Standard Time|Daylight Time|Time/gi, '').trim();
+                        if (formattedName && formattedName.toLowerCase() !== countryOrRegion.toLowerCase() && formattedName.toLowerCase() !== cityOrArea.toLowerCase()) {
+                            // If formatted name is distinct and useful, use it.
+                            if (cityOrArea) {
+                                return `${countryOrRegion} (${cityOrArea})`; // Keep the country/city for clarity
+                            }
+                            return formattedName;
+                        }
+                    }
+
+                    if (cityOrArea) {
+                        const regionMap = {
+                            'America': 'United States', // Generalize if it's too broad
+                            'Europe': 'Europe',
+                            'Asia': 'Asia',
+                            'Africa': 'Africa',
+                            'Australia': 'Australia',
+                            'Pacific': 'Pacific Islands',
+                            'Atlantic': 'Atlantic Islands',
+                            'Indian': 'Indian Ocean',
+                            'Arctic': 'Arctic'
+                        };
+                        const displayRegion = regionMap[parts[0]] || parts[0].replace(/_/g, ' ');
+                        
+                        let finalName = `${displayRegion}`;
+                        if (cityOrArea) {
+                            finalName += ` (${cityOrArea})`;
+                        }
+                        timezoneDisplayNames.set(timezone, finalName);
+                        return finalName;
+                    }
+                    timezoneDisplayNames.set(timezone, countryOrRegion || timezone.replace(/_/g, ' '));
+                    return countryOrRegion || timezone.replace(/_/g, ' ');
+
+                } catch (e) {
+                    console.error(`Error getting friendly name for ${timezone}:`, e);
+                    timezoneDisplayNames.set(timezone, timezone.replace(/_/g, ' '));
+                    return timezone.replace(/_/g, ' '); // Fallback to raw if error
+                }
+            }
+
+
+            /**
+             * Updates the time and date for the main India clock.
+             */
+            function updateIndiaClock() {
+                const now = new Date();
+                const timeOptions = { timeZone: indiaTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
+                const dateOptions = { timeZone: indiaTimezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                
+                document.getElementById('india-time').innerText = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
+                document.getElementById('india-date').innerText = new Intl.DateTimeFormat('en-US', dateOptions).format(now);
+            }
+
+            /**
+             * Updates the time for a single clock card.
+             * @param {HTMLElement} card The clock card element.
+             * @param {string} timezone The timezone string for the card.
+             */
+            function updateSingleClock(card, timezone) {
+                const now = new Date();
+                const timeOptions = { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
+                const timeString = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
+                
+                // Update the time display
+                card.querySelector('[data-id="current-time"]').innerText = timeString;
+
+                // Calculate and display the time difference from India
+                const nowIndia = new Date(now.toLocaleString('en-US', { timeZone: indiaTimezone }));
+                const nowCity = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+                
+                const diffMs = nowCity - nowIndia;
+                const totalMinutes = Math.round(diffMs / (1000 * 60)); // Total minutes difference
+                const diffHours = Math.floor(Math.abs(totalMinutes) / 60);
+                const diffMinutes = Math.abs(totalMinutes) % 60;
+
+                let sign = (totalMinutes >= 0) ? '+' : '-';
+                if (totalMinutes === 0) {
+                    sign = '';
+                }
+
+                const diffString = `${sign}${diffHours.toString().padStart(2, '0')}:${diffMinutes.toString().padStart(2, '0')}`;
+                const timeDiffElement = card.querySelector('[data-id="time-diff"]');
+                if (timeDiffElement) {
+                    timeDiffElement.innerText = `Difference from IST: ${diffString}`;
+                }
+            }
+            
+            /**
+             * Renders a list of clock cards for the given timezones.
+             * @param {string[]} timezonesToDisplay The list of timezones to render.
+             */
+            function renderClocks(timezonesToDisplay) {
+                // Clear existing clocks
+                allClocksContainer.innerHTML = '';
+                
+                if (timezonesToDisplay.length === 0) {
+                    allClocksContainer.innerHTML = '<p class="text-center text-gray-400">No matching timezones found.</p>';
+                    return;
+                }
+
+                // Sort timezones alphabetically by their friendly name
+                timezonesToDisplay.sort((a, b) => {
+                    const nameA = getFriendlyTimezoneName(a);
+                    const nameB = getFriendlyTimezoneName(b);
+                    return nameA.localeCompare(nameB);
+                });
+
+                timezonesToDisplay.forEach(timezone => {
+                    // Clone the template and set content
+                    const newCard = clockTemplate.content.cloneNode(true);
+                    
+                    const friendlyName = getFriendlyTimezoneName(timezone);
+
+                    newCard.querySelector('[data-id="city-name"]').innerText = friendlyName;
+                    newCard.querySelector('[data-id="timezone-name"]').innerText = timezone;
+
+                    // Update the time for the new card immediately
+                    const cardElement = newCard.querySelector('.bg-gray-800');
+                    updateSingleClock(cardElement, timezone);
+                    
+                    // Append the new card to the container
+                    allClocksContainer.appendChild(newCard);
+                });
+            }
+
+            /**
+             * Updates all visible clocks.
+             */
+            function updateAllClocks() {
+                updateIndiaClock();
+                
+                // Only update cards currently in the DOM
+                const cards = allClocksContainer.querySelectorAll('.bg-gray-800');
+                cards.forEach(card => {
+                    const timezone = card.querySelector('[data-id="timezone-name"]').innerText;
+                    updateSingleClock(card, timezone);
+                });
+            }
+
+            // Event listener for the search bar
+            searchInput.addEventListener('input', (event) => {
+                const searchTerm = event.target.value.toLowerCase();
+                displayedTimezones = allTimezones.filter(tz => {
+                    const friendlyName = getFriendlyTimezoneName(tz).toLowerCase();
+                    return tz.toLowerCase().includes(searchTerm) || friendlyName.includes(searchTerm);
+                });
+                renderClocks(displayedTimezones);
+            });
+            
+            // Initial render and setup
+            loadingIndicator.style.display = 'block'; // Ensure loading indicator is visible
+            
+            // Populate display names once
+            allTimezones.forEach(tz => getFriendlyTimezoneName(tz)); // Pre-populate cache
+
+            // Initial render of all clocks (or a subset if you prefer to lazy load)
+            renderClocks(allTimezones); 
+            loadingIndicator.style.display = 'none'; // Hide loading indicator after initial render
+
+            // Set interval to update clocks every second
+            setInterval(updateAllClocks, 1000);
+        });
+    </script>
+</body>
+</html>
