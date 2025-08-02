@@ -32,7 +32,7 @@
             <p class="mt-4 text-xl md:text-2xl text-gray-400">Live, Accurate, and Beautiful. ✨</p>
         </header>
 
-        <div class="bg-gray-900 p-8 md:p-12 rounded-3xl shadow-2xl border border-gray-800 transition-transform duration-300 hover:scale-[1.01]">
+        <div id="india-clock-section" class="bg-gray-900 p-8 md:p-12 rounded-3xl shadow-2xl border border-gray-800 transition-transform duration-300 hover:scale-[1.01]">
             <h2 class="text-2xl md:text-3xl font-bold text-center text-emerald-400 mb-4">India (IST) 🇮🇳</h2>
             <div id="india-time" class="text-6xl md:text-8xl lg:text-9xl font-light text-center tracking-tight text-white transition-opacity duration-500 ease-in-out">
                 </div>
@@ -40,7 +40,7 @@
                 </div>
         </div>
 
-        <div class="space-y-6">
+        <div id="all-timezones-section" class="space-y-6">
             <div class="text-center">
                 <h2 class="text-3xl font-bold text-cyan-400">All Timezones</h2>
                 <p class="text-gray-400 mt-2">Search for a city or country to see its local time.</p>
@@ -55,10 +55,25 @@
                 </div>
         </div>
 
+        <div id="big-clock-display" class="hidden bg-gray-900 p-8 md:p-12 rounded-3xl shadow-2xl border border-gray-800 text-center">
+            <button id="back-button" class="absolute top-4 left-4 text-gray-400 hover:text-white text-lg px-3 py-1 rounded-full border border-gray-700 hover:border-white transition-colors">
+                &larr; Back to All
+            </button>
+            <h2 id="big-clock-city-name" class="text-3xl md:text-4xl font-bold text-blue-400 mb-2 mt-4"></h2>
+            <p id="big-clock-timezone-name" class="text-lg text-gray-400 mb-4"></p>
+            <div id="big-clock-time" class="text-7xl md:text-8xl lg:text-9xl font-light text-white mb-4"></div>
+            <div id="big-clock-date" class="text-xl md:text-2xl text-gray-400 mb-6"></div>
+
+            <div class="flex justify-center space-x-4">
+                <button id="toggle-12hr" class="px-6 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 transition-colors font-semibold">12 Hour</button>
+                <button id="toggle-24hr" class="px-6 py-3 rounded-full bg-cyan-600 hover:bg-cyan-700 transition-colors font-semibold">24 Hour</button>
+            </div>
+        </div>
+
     </div>
 
     <template id="clock-card-template">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700 transition-transform duration-300 hover:scale-105 hover:shadow-2xl">
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-700 transition-transform duration-300 hover:scale-105 hover:shadow-2xl cursor-pointer">
             <h3 class="text-xl font-bold text-white mb-1" data-id="city-name"></h3>
             <p class="text-sm text-gray-400 mb-2" data-id="timezone-name"></p>
             <div class="text-3xl font-semibold text-cyan-400" data-id="current-time"></div>
@@ -69,23 +84,35 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const indiaTimezone = 'Asia/Kolkata';
+            const indiaClockSection = document.getElementById('india-clock-section');
+            const allTimezonesSection = document.getElementById('all-timezones-section');
             const allClocksContainer = document.getElementById('all-clocks-container');
             const searchInput = document.getElementById('search-input');
             const loadingIndicator = document.getElementById('loading-indicator');
             const clockTemplate = document.getElementById('clock-card-template');
 
+            // Big clock display elements
+            const bigClockDisplay = document.getElementById('big-clock-display');
+            const bigClockCityName = document.getElementById('big-clock-city-name');
+            const bigClockTimezoneName = document.getElementById('big-clock-timezone-name');
+            const bigClockTime = document.getElementById('big-clock-time');
+            const bigClockDate = document.getElementById('big-clock-date');
+            const toggle12hrButton = document.getElementById('toggle-12hr');
+            const toggle24hrButton = document.getElementById('toggle-24hr');
+            const backButton = document.getElementById('back-button');
+
+            let currentBigClockTimezone = ''; // To store the timezone currently displayed in the big clock
+            let is12HourFormat = true; // Default format for the big clock
+
             // List of all available timezones
             const allTimezones = Intl.supportedValuesOf('timeZone');
-            let displayedTimezones = []; // Will hold the filtered timezones
+            let displayedTimezones = [];
             
             // Map to store pre-parsed timezone display names for faster rendering
             const timezoneDisplayNames = new Map();
 
             /**
              * Extracts a more user-friendly city/country name from a timezone string.
-             * e.g., "America/New_York" -> "United States (New York)"
-             * "Europe/London" -> "United Kingdom (London)"
-             * "Asia/Kolkata" -> "India (Kolkata)"
              * @param {string} timezone The IANA timezone string.
              * @returns {string} A user-friendly name.
              */
@@ -100,40 +127,42 @@
                     let cityOrArea = '';
 
                     if (parts.length === 1) {
-                        // For generic timezones like "UTC" or "GMT"
                         countryOrRegion = parts[0].replace(/_/g, ' ');
                     } else if (parts.length === 2) {
-                        // For "Region/City" like "America/New_York"
                         countryOrRegion = parts[0].replace(/_/g, ' ');
                         cityOrArea = parts[1].replace(/_/g, ' ');
                     } else if (parts.length >= 3) {
-                        // For "Continent/Country/City" like "America/Argentina/Buenos_Aires"
-                        countryOrRegion = parts[1].replace(/_/g, ' '); // Often the country
+                        countryOrRegion = parts[1].replace(/_/g, ' ');
                         cityOrArea = parts.slice(2).join(' ').replace(/_/g, ' ');
                     }
 
                     // Attempt to get a more proper country name if available
+                    // This can sometimes return very long strings or generic "GMT" names.
                     let formattedName = new Intl.DateTimeFormat('en-US', {
                         timeZone: timezone,
                         timeZoneName: 'longGeneric'
                     }).format(new Date());
 
-                    // Fallback to simple parsing if generic name is too long or not ideal
+                    // Heuristic to check if the formatted name is useful and not just generic GMT/Offset
                     if (formattedName && formattedName.length < 30 && !formattedName.includes('GMT')) {
-                        // Extract just the descriptive part, e.g., "Pacific Time"
                         formattedName = formattedName.replace(/Standard Time|Daylight Time|Time/gi, '').trim();
                         if (formattedName && formattedName.toLowerCase() !== countryOrRegion.toLowerCase() && formattedName.toLowerCase() !== cityOrArea.toLowerCase()) {
-                            // If formatted name is distinct and useful, use it.
                             if (cityOrArea) {
-                                return `${countryOrRegion} (${cityOrArea})`; // Keep the country/city for clarity
+                                // Combine region and city if both exist, e.g., "America (New York)"
+                                const finalName = `${countryOrRegion} (${cityOrArea})`;
+                                timezoneDisplayNames.set(timezone, finalName);
+                                return finalName;
                             }
+                            // Otherwise, use the more descriptive formatted name if it's concise
+                            timezoneDisplayNames.set(timezone, formattedName);
                             return formattedName;
                         }
                     }
 
+                    // Fallback to manual parsing if Intl.DateTimeFormat doesn't provide a good short name
                     if (cityOrArea) {
                         const regionMap = {
-                            'America': 'United States', // Generalize if it's too broad
+                            'America': 'United States', // Generalize for better display
                             'Europe': 'Europe',
                             'Asia': 'Asia',
                             'Africa': 'Africa',
@@ -152,6 +181,7 @@
                         timezoneDisplayNames.set(timezone, finalName);
                         return finalName;
                     }
+                    // For simpler timezones like "UTC" or "Etc/GMT+X"
                     timezoneDisplayNames.set(timezone, countryOrRegion || timezone.replace(/_/g, ' '));
                     return countryOrRegion || timezone.replace(/_/g, ' ');
 
@@ -185,15 +215,13 @@
                 const timeOptions = { timeZone: timezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
                 const timeString = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
                 
-                // Update the time display
                 card.querySelector('[data-id="current-time"]').innerText = timeString;
 
-                // Calculate and display the time difference from India
                 const nowIndia = new Date(now.toLocaleString('en-US', { timeZone: indiaTimezone }));
                 const nowCity = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
                 
                 const diffMs = nowCity - nowIndia;
-                const totalMinutes = Math.round(diffMs / (1000 * 60)); // Total minutes difference
+                const totalMinutes = Math.round(diffMs / (1000 * 60));
                 const diffHours = Math.floor(Math.abs(totalMinutes) / 60);
                 const diffMinutes = Math.abs(totalMinutes) % 60;
 
@@ -214,7 +242,6 @@
              * @param {string[]} timezonesToDisplay The list of timezones to render.
              */
             function renderClocks(timezonesToDisplay) {
-                // Clear existing clocks
                 allClocksContainer.innerHTML = '';
                 
                 if (timezonesToDisplay.length === 0) {
@@ -222,7 +249,6 @@
                     return;
                 }
 
-                // Sort timezones alphabetically by their friendly name
                 timezonesToDisplay.sort((a, b) => {
                     const nameA = getFriendlyTimezoneName(a);
                     const nameB = getFriendlyTimezoneName(b);
@@ -230,19 +256,22 @@
                 });
 
                 timezonesToDisplay.forEach(timezone => {
-                    // Clone the template and set content
                     const newCard = clockTemplate.content.cloneNode(true);
                     
                     const friendlyName = getFriendlyTimezoneName(timezone);
 
-                    newCard.querySelector('[data-id="city-name"]').innerText = friendlyName;
-                    newCard.querySelector('[data-id="timezone-name"]').innerText = timezone;
+                    const cityNameElement = newCard.querySelector('[data-id="city-name"]');
+                    const timezoneNameElement = newCard.querySelector('[data-id="timezone-name"]');
 
-                    // Update the time for the new card immediately
+                    cityNameElement.innerText = friendlyName;
+                    timezoneNameElement.innerText = timezone;
+
                     const cardElement = newCard.querySelector('.bg-gray-800');
                     updateSingleClock(cardElement, timezone);
                     
-                    // Append the new card to the container
+                    // Add click listener to open big clock
+                    cardElement.addEventListener('click', () => openBigClock(timezone));
+
                     allClocksContainer.appendChild(newCard);
                 });
             }
@@ -251,14 +280,90 @@
              * Updates all visible clocks.
              */
             function updateAllClocks() {
-                updateIndiaClock();
+                // Only update India clock if its section is visible
+                if (!indiaClockSection.classList.contains('hidden')) {
+                    updateIndiaClock();
+                }
                 
-                // Only update cards currently in the DOM
-                const cards = allClocksContainer.querySelectorAll('.bg-gray-800');
-                cards.forEach(card => {
-                    const timezone = card.querySelector('[data-id="timezone-name"]').innerText;
-                    updateSingleClock(card, timezone);
-                });
+                // Only update small cards if their section is visible
+                if (!allTimezonesSection.classList.contains('hidden')) {
+                    const cards = allClocksContainer.querySelectorAll('.bg-gray-800');
+                    cards.forEach(card => {
+                        const timezone = card.querySelector('[data-id="timezone-name"]').innerText;
+                        updateSingleClock(card, timezone);
+                    });
+                }
+
+                // Update big clock if it's visible
+                if (!bigClockDisplay.classList.contains('hidden')) {
+                    updateBigClock();
+                }
+            }
+
+            // BIG CLOCK DISPLAY FUNCTIONS
+            function updateBigClock() {
+                if (!currentBigClockTimezone) return; 
+
+                const now = new Date();
+                const timeOptions = { 
+                    timeZone: currentBigClockTimezone, 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit', 
+                    hour12: is12HourFormat 
+                };
+                const dateOptions = { 
+                    timeZone: currentBigClockTimezone, 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                };
+                
+                bigClockTime.innerText = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
+                bigClockDate.innerText = new Intl.DateTimeFormat('en-US', dateOptions).format(now);
+            }
+
+            function openBigClock(timezone) {
+                currentBigClockTimezone = timezone;
+                bigClockCityName.innerText = getFriendlyTimezoneName(timezone);
+                bigClockTimezoneName.innerText = timezone;
+                
+                updateBigClock(); // Initial update for the big clock
+
+                // Hide other sections
+                indiaClockSection.classList.add('hidden');
+                allTimezonesSection.classList.add('hidden');
+                
+                // Show big clock display
+                bigClockDisplay.classList.remove('hidden');
+            }
+
+            function showAllClocks() {
+                // Hide big clock display
+                bigClockDisplay.classList.add('hidden');
+                currentBigClockTimezone = ''; // Clear current timezone
+
+                // Show other sections
+                indiaClockSection.classList.remove('hidden');
+                allTimezonesSection.classList.remove('hidden');
+            }
+
+            function toggleTimeFormat(is12Hour) {
+                is12HourFormat = is12Hour;
+                // Update button styles
+                if (is12Hour) {
+                    toggle12hrButton.classList.add('bg-emerald-700');
+                    toggle12hrButton.classList.remove('bg-emerald-600');
+                    toggle24hrButton.classList.add('bg-cyan-600');
+                    toggle24hrButton.classList.remove('bg-cyan-700');
+                } else {
+                    toggle12hrButton.classList.add('bg-emerald-600');
+                    toggle12hrButton.classList.remove('bg-emerald-700');
+                    toggle24hrButton.classList.add('bg-cyan-700');
+                    toggle24hrButton.classList.remove('bg-cyan-600');
+                }
+                updateBigClock(); // Re-render the big clock with the new format
             }
 
             // Event listener for the search bar
@@ -271,15 +376,21 @@
                 renderClocks(displayedTimezones);
             });
             
-            // Initial render and setup
-            loadingIndicator.style.display = 'block'; // Ensure loading indicator is visible
-            
-            // Populate display names once
-            allTimezones.forEach(tz => getFriendlyTimezoneName(tz)); // Pre-populate cache
+            // Event listeners for time format buttons
+            toggle12hrButton.addEventListener('click', () => toggleTimeFormat(true));
+            toggle24hrButton.addEventListener('click', () => toggleTimeFormat(false));
 
-            // Initial render of all clocks (or a subset if you prefer to lazy load)
+            // Event listener for the "Back to All" button
+            backButton.addEventListener('click', showAllClocks);
+            
+            // Initial render and setup
+            loadingIndicator.style.display = 'block';
+            allTimezones.forEach(tz => getFriendlyTimezoneName(tz)); // Pre-populate cache
             renderClocks(allTimezones); 
-            loadingIndicator.style.display = 'none'; // Hide loading indicator after initial render
+            loadingIndicator.style.display = 'none';
+
+            // Set default button state for 12hr format
+            toggleTimeFormat(true);
 
             // Set interval to update clocks every second
             setInterval(updateAllClocks, 1000);
